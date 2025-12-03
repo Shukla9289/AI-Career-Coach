@@ -1,20 +1,40 @@
-# Full Stack AI Career Coach with Next JS, Neon DB, Tailwind, Prisma, Inngest, Shadcn UI Tutorial 🔥🔥
-## https://youtu.be/UbXpRv5ApKA
+# AI Career Coach 🚀
 
-![sensai](https://github.com/user-attachments/assets/eee79242-4056-4d19-b655-2873788979e1)
+AI Career Coach is a smart web application that helps users accelerate their career using artificial intelligence. It provides career insights, interview preparation, resume improvement, and professional cover letters using Groq’s ultra-fast LLMs.
 
-### Make sure to create a `.env` file with following variables -
+---
 
-```
-DATABASE_URL=
+## 🔥 Features
 
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
+- ✅ AI-based Career Guidance
+- ✅ Industry Insight Generator
+- ✅ Technical Quiz Generator
+- ✅ Resume Improvement with AI
+- ✅ AI Cover Letter Generator
+- ✅ Profile Analysis & Recommendations
+- ✅ Authentication using Clerk
+- ✅ Scheduled Industry Insights using Inngest
+- ✅ Database powered by Prisma & Neon
+- ✅ AI powered by Groq LLaMA models
 
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/onboarding
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/onboarding
+---
 
-GEMINI_API_KEY=
-```
+## 🛠 Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Frontend | Next.js 15, React |
+| Backend | Node.js, Server Actions |
+| AI | Groq (LLaMA 3.3 - 70B) |
+| Auth | Clerk |
+| Database | PostgreSQL (Neon) |
+| ORM | Prisma |
+| Jobs/Cron | Inngest |
+| UI | Tailwind CSS, Radix UI |
+| Hosting | Vercel (recommended) |
+
+---
+
+
+cd AI-Career-Coach
+
