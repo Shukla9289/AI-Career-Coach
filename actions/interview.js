@@ -2,10 +2,23 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model:"gemini-1.5-flash" });
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1"
+});
+
+async function groqCompletion(prompt) {
+  const completion = await groq.chat.completions.create({
+    model: "llama-3.3-70b-versatile"
+,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7
+  });
+
+  return completion.choices[0].message.content;
+}
 
 export async function generateQuiz() {
   const { userId } = await auth();
@@ -13,144 +26,92 @@ export async function generateQuiz() {
 
   const user = await db.user.findUnique({
     where: { clerkUserId: userId },
-    select: {
-      industry: true,
-      skills: true,
-    },
+    select: { industry: true, skills: true },
   });
 
   if (!user) throw new Error("User not found");
 
   const prompt = `
-    Generate 10 technical interview questions for a ${
-      user.industry
-    } professional${
-    user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
-  }.
-    
-    Each question should be multiple choice with 4 options.
-    
-    Return the response in this JSON format only, no additional text:
+Generate 10 technical interview questions for a ${user.industry} professional
+${user.skills?.length ? `with expertise in ${user.skills.join(", ")}` : ""}.
+
+Each question must be MCQ with 4 options.
+
+Return ONLY JSON in below format:
+{
+  "questions": [
     {
-      "questions": [
-        {
-          "question": "string",
-          "options": ["string", "string", "string", "string"],
-          "correctAnswer": "string",
-          "explanation": "string"
-        }
-      ]
+      "question": "string",
+      "options": ["A","B","C","D"],
+      "correctAnswer":"string",
+      "explanation":"string"
     }
-  `;
+  ]
+}
+`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    const quiz = JSON.parse(cleanedText);
+  const text = await groqCompletion(prompt);
+  const cleaned = text.replace(/```(?:json)?/g, "").trim();
+  const quiz = JSON.parse(cleaned);
 
-    return quiz.questions;
-  } catch (error) {
-    console.error("Error generating quiz:", error);
-    throw new Error("Failed to generate quiz questions");
-  }
+  return quiz.questions;
 }
 
 export async function saveQuizResult(questions, answers, score) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  const questionResults = questions.map((q, index) => ({
+  const questionResults = questions.map((q, i) => ({
     question: q.question,
     answer: q.correctAnswer,
-    userAnswer: answers[index],
-    isCorrect: q.correctAnswer === answers[index],
-    explanation: q.explanation,
+    userAnswer: answers[i],
+    isCorrect: q.correctAnswer === answers[i],
+    explanation: q.explanation
   }));
 
-  // Get wrong answers
-  const wrongAnswers = questionResults.filter((q) => !q.isCorrect);
+  const wrong = questionResults.filter(q => !q.isCorrect);
 
-  // Only generate improvement tips if there are wrong answers
   let improvementTip = null;
-  if (wrongAnswers.length > 0) {
-    const wrongQuestionsText = wrongAnswers
-      .map(
-        (q) =>
-          `Question: "${q.question}"\nCorrect Answer: "${q.answer}"\nUser Answer: "${q.userAnswer}"`
-      )
-      .join("\n\n");
 
-    const improvementPrompt = `
-      The user got the following ${user.industry} technical interview questions wrong:
+  if (wrong.length > 0) {
+    const wrongText = wrong.map(q =>
+      `Question: ${q.question}\nCorrect: ${q.answer}\nUser: ${q.userAnswer}`
+    ).join("\n\n");
 
-      ${wrongQuestionsText}
+    const prompt = `
+User got these ${user.industry} questions wrong:
 
-      Based on these mistakes, provide a concise, specific improvement tip.
-      Focus on the knowledge gaps revealed by these wrong answers.
-      Keep the response under 2 sentences and make it encouraging.
-      Don't explicitly mention the mistakes, instead focus on what to learn/practice.
-    `;
+${wrongText}
 
-    try {
-      const tipResult = await model.generateContent(improvementPrompt);
+Give ONE improvement advice under 2 sentences.
+`;
 
-      improvementTip = tipResult.response.text().trim();
-      console.log(improvementTip);
-    } catch (error) {
-      console.error("Error generating improvement tip:", error);
-      // Continue without improvement tip if generation fails
+    improvementTip = await groqCompletion(prompt);
+  }
+
+  return await db.assessment.create({
+    data: {
+      userId: user.id,
+      quizScore: score,
+      questions: questionResults,
+      category: "Technical",
+      improvementTip,
     }
-  }
-
-  try {
-    const assessment = await db.assessment.create({
-      data: {
-        userId: user.id,
-        quizScore: score,
-        questions: questionResults,
-        category: "Technical",
-        improvementTip,
-      },
-    });
-
-    return assessment;
-  } catch (error) {
-    console.error("Error saving quiz result:", error);
-    throw new Error("Failed to save quiz result");
-  }
+  });
 }
 
 export async function getAssessments() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  try {
-    const assessments = await db.assessment.findMany({
-      where: {
-        userId: user.id,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
-
-    return assessments;
-  } catch (error) {
-    console.error("Error fetching assessments:", error);
-    throw new Error("Failed to fetch assessments");
-  }
+  return await db.assessment.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "asc" }
+  });
 }

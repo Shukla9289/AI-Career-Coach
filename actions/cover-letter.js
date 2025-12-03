@@ -2,121 +2,77 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1"
+});
+
+async function groqCompletion(prompt) {
+  const r = await groq.chat.completions.create({
+    model:"llama-3.3-70b-versatile",
+
+    messages: [{ role: "user", content: prompt }],
+  });
+  return r.choices[0].message.content;
+}
 
 export async function generateCoverLetter(data) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
   const prompt = `
-    Write a professional cover letter for a ${data.jobTitle} position at ${
-    data.companyName
-  }.
-    
-    About the candidate:
-    - Industry: ${user.industry}
-    - Years of Experience: ${user.experience}
-    - Skills: ${user.skills?.join(", ")}
-    - Professional Background: ${user.bio}
-    
-    Job Description:
-    ${data.jobDescription}
-    
-    Requirements:
-    1. Use a professional, enthusiastic tone
-    2. Highlight relevant skills and experience
-    3. Show understanding of the company's needs
-    4. Keep it concise (max 400 words)
-    5. Use proper business letter formatting in markdown
-    6. Include specific examples of achievements
-    7. Relate candidate's background to job requirements
-    
-    Format the letter in markdown.
-  `;
+Write a professional cover letter for ${data.jobTitle} at ${data.companyName}.
 
-  try {
-    const result = await model.generateContent(prompt);
-    const content = result.response.text().trim();
+Industry: ${user.industry}
+Experience: ${user.experience}
+Skills: ${user.skills?.join(", ")}
+Bio: ${user.bio}
 
-    const coverLetter = await db.coverLetter.create({
-      data: {
-        content,
-        jobDescription: data.jobDescription,
-        companyName: data.companyName,
-        jobTitle: data.jobTitle,
-        status: "completed",
-        userId: user.id,
-      },
-    });
+Job description:
+${data.jobDescription}
 
-    return coverLetter;
-  } catch (error) {
-    console.error("Error generating cover letter:", error.message);
-    throw new Error("Failed to generate cover letter");
-  }
+Requirements:
+- Professional tone
+- Max 400 words
+- Markdown format
+`;
+
+  const content = await groqCompletion(prompt);
+
+  return await db.coverLetter.create({
+    data: {
+      content,
+      companyName: data.companyName,
+      jobTitle: data.jobTitle,
+      jobDescription: data.jobDescription,
+      userId: user.id,
+      status: "completed"
+    }
+  });
 }
 
 export async function getCoverLetters() {
   const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   return await db.coverLetter.findMany({
-    where: {
-      userId: user.id,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" }
   });
 }
 
 export async function getCoverLetter(id) {
   const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  return await db.coverLetter.findUnique({
-    where: {
-      id,
-      userId: user.id,
-    },
-  });
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  return await db.coverLetter.findUnique({ where: { id, userId: user.id } });
 }
 
 export async function deleteCoverLetter(id) {
   const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  return await db.coverLetter.delete({
-    where: {
-      id,
-      userId: user.id,
-    },
-  });
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  return await db.coverLetter.delete({ where: { id, userId: user.id } });
 }
