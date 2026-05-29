@@ -1,0 +1,45 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  roadmaps  Roadmap[]
+  logs      DebugLog[]
+}
+
+model Roadmap {
+  id          String   @id @default(uuid())
+  title       String
+  targetRole  String
+  stepsJson   String   @db.Text // Store structured roadmap nodes securely
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId]) // Optimized database indexing for fast user lookup benchmarks
+}
+
+model DebugLog {
+  id        String   @id @default(uuid())
+  endpoint  String
+  payload   String   @db.Text
+  error     String?  @db.Text
+  status    Int
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([status]) // Faster troubleshooting and defect analysis indices
+}
